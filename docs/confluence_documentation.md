@@ -291,3 +291,225 @@ passport_rules = DocumentValidationRules(
     min_overall_confidence=0.7
 )
 ```
+
+## 7. Document Processing Use Cases
+
+This section outlines key document processing use cases supported by the Textract Document Processor, along with feasibility analysis for field extraction and implementation considerations.
+
+### 7.1 Document Validation Use Cases
+
+| Use Case | Description | Feasibility | Fields to Extract | Implementation Approach | Confidence Threshold |
+|----------|-------------|-------------|-------------------|-------------------------|----------------------|
+| MRZ Validation | Validate Machine Readable Zone on passports and travel documents | High | MRZ lines, document number, issuing country, expiry date | Rule-based pattern matching with checksum validation | 90% |
+| Invoice Total Verification | Verify that line items sum to the invoice total | High | Line item amounts, subtotal, tax, total amount | Mathematical validation with OCR error tolerance | 85% |
+| ID Document Authenticity | Verify security features on ID documents | Medium | Hologram markers, microprint indicators, document patterns | ML-based feature detection with reference database | 95% |
+| Address Verification | Validate address format and existence | Medium | Street, city, state/province, postal code, country | Geocoding API integration with format validation | 80% |
+| Signature Verification | Verify signature presence and characteristics | Medium | Signature box, signature strokes | ML-based signature detection and analysis | 75% |
+| Document Completeness | Verify all required fields are present | High | Document-specific required fields | Rule-based completeness checking with field detection | 90% |
+| Expiration Validation | Verify document is not expired | High | Issue date, expiry date | Date extraction and comparison with current date | 95% |
+
+### 7.2 Document Tagging Use Cases
+
+| Use Case | Description | Feasibility | Tags to Apply | Implementation Approach | Confidence Threshold |
+|----------|-------------|-------------|---------------|-------------------------|----------------------|
+| Document Type Classification | Automatically classify document into predefined categories | High | Document type (passport, invoice, license, etc.) | ML-based document classification with visual and textual features | 85% |
+| Content-based Tagging | Apply tags based on document content | High | Content tags (financial, medical, legal, etc.) | NLP-based content analysis with keyword extraction | 80% |
+| Metadata Tagging | Apply tags based on document metadata | High | Metadata tags (date range, issuer, recipient, etc.) | Rule-based metadata extraction and categorization | 90% |
+| Compliance Tagging | Tag documents based on regulatory requirements | Medium | Compliance tags (PII, HIPAA, GDPR, etc.) | Rule-based sensitive information detection | 95% |
+| Quality Tagging | Tag documents based on image quality | High | Quality tags (high-res, low-res, needs review) | Image analysis for resolution, contrast, and clarity | 85% |
+| Language Tagging | Identify and tag document language | High | Language tags (English, Spanish, French, etc.) | Language detection algorithms with character set analysis | 90% |
+| Custom Entity Tagging | Tag documents based on presence of custom entities | Medium | Entity tags (contains SSN, contains credit card, etc.) | Pattern matching with entity recognition | 90% |
+
+### 7.3 Attribute Extraction Use Cases
+
+| Use Case | Description | Feasibility | Fields to Extract | Implementation Approach | Storage Mechanism for Confidence Scores |
+|----------|-------------|-------------|-------------------|-------------------------|----------------------------------------|
+| Personal Information Extraction | Extract personal details from ID documents | High | Name, DOB, gender, nationality, ID number | ML-based field detection with contextual validation | JSON field with confidence score per attribute |
+| Invoice Data Extraction | Extract key data points from invoices | High | Invoice number, date, vendor, line items, total | Template-based extraction with positional awareness | Database columns for each field with confidence score |
+| Receipt Information Extraction | Extract transaction details from receipts | Medium | Merchant, date, items, prices, total, payment method | ML-based field detection with positional relationships | NoSQL document with nested confidence scores |
+| Medical Document Extraction | Extract medical information from healthcare documents | Medium | Patient info, diagnosis codes, treatment details | Healthcare-specific NLP with medical terminology awareness | FHIR-compliant JSON with confidence metadata |
+| Contract Clause Extraction | Extract key clauses and terms from contracts | Medium | Parties, effective dates, termination clauses, obligations | Legal NLP with clause detection | Structured JSON with clause-level confidence scores |
+| Financial Statement Extraction | Extract financial data from statements | Medium | Account numbers, transaction details, balances | Template matching with financial data validation | Relational database with confidence score columns |
+| Address Extraction | Extract and normalize address components | High | Street, city, state/province, postal code, country | Address parsing with geocoding validation | Normalized address object with component confidence |
+
+### 7.4 Document Splitting Use Cases
+
+| Use Case | Description | Feasibility | Split Criteria | Implementation Approach | Confidence Considerations |
+|----------|-------------|-------------|----------------|-------------------------|---------------------------|
+| Multi-Document PDF Splitting | Split PDF containing multiple document types | High | Document type boundaries, page markers | ML-based document boundary detection with visual cues | Confidence threshold for boundary detection |
+| Form Package Separation | Separate multi-form packages into individual forms | High | Form type, form boundaries, page breaks | Template matching with form recognition | Minimum confidence for form identification |
+| Statement Separation | Split financial statements by account or statement period | Medium | Statement headers, account identifiers, date ranges | Header/footer detection with date recognition | Confidence scoring for statement boundaries |
+| Medical Record Separation | Split medical records by document type or encounter | Medium | Document type indicators, encounter dates, patient identifiers | Healthcare document classification with boundary detection | Hierarchical confidence scoring for document types |
+| Invoice Attachment Separation | Separate invoices from supporting documentation | High | Invoice markers, attachment indicators, content type | Content-based classification with visual separation | Dual confidence scoring for invoice and attachment |
+| ID Document Batch Splitting | Split batches of ID documents into individual records | High | Document boundaries, document type, white space | Edge detection with document classification | Boundary confidence threshold |
+| Legal Document Unbundling | Split legal document bundles by document type | Medium | Document headers, legal formatting, section markers | Legal document classification with structural analysis | Confidence matrix for document type and boundaries |
+
+### 7.5 Implementation Considerations
+
+#### 7.5.1 Confidence Score Storage
+
+The system stores confidence scores using the following mechanisms:
+
+1. **Field-Level Confidence:**
+   ```json
+   {
+     "field_name": "passport_number",
+     "value": "AB123456",
+     "confidence": 95.5,
+     "bounding_box": {
+       "top": 0.1,
+       "left": 0.2,
+       "width": 0.3,
+       "height": 0.1
+     }
+   }
+   ```
+
+2. **Document-Level Confidence:**
+   ```json
+   {
+     "document_type": "passport",
+     "confidence_score": 92.3,
+     "fields": [...],
+     "metadata": {
+       "confidence_calculation": "weighted_average",
+       "critical_fields_confidence": 94.8,
+       "non_critical_fields_confidence": 89.2
+     }
+   }
+   ```
+
+3. **Confidence Thresholds:**
+   - Critical fields: 90% minimum confidence
+   - Non-critical fields: 75% minimum confidence
+   - Overall document: 85% minimum confidence
+
+4. **Database Schema:**
+   ```sql
+   CREATE TABLE extracted_fields (
+     id SERIAL PRIMARY KEY,
+     document_id UUID REFERENCES documents(id),
+     field_name VARCHAR(100) NOT NULL,
+     field_value TEXT,
+     confidence DECIMAL(5,2) NOT NULL,
+     requires_review BOOLEAN GENERATED ALWAYS AS (confidence < 90.0) STORED
+   );
+   ```
+
+#### 7.5.2 Human-in-the-Loop Validation
+
+For fields with confidence scores below thresholds:
+1. Fields are flagged for human review
+2. UI highlights low-confidence fields
+3. Human reviewers can correct values
+4. System records original and corrected values
+5. Corrections are used to improve future extraction accuracy
+
+#### 7.5.3 Extensibility for New Use Cases
+
+The system is designed to be extensible for new use cases:
+1. Define new document types in the document model
+2. Implement custom processors for new document types
+3. Define validation rules specific to the new document type
+4. Configure confidence thresholds appropriate for the use case
+5. Implement UI components for human review if needed
+
+## 8. Technology Stack Analysis: Python vs Java for OCR Extraction
+
+This section provides a comparative analysis of Python and Java libraries for OCR extraction work, evaluating their suitability for document processing tasks.
+
+### 8.1 Library Comparison
+
+| Feature | Python Libraries | Java Libraries | Comparison |
+|---------|------------------|---------------|------------|
+| **OCR Engines** | Tesseract (via pytesseract), AWS Textract, Google Vision API, Azure Computer Vision | Tesseract (via Tess4J), Apache PDFBox, Aspose.OCR, ABBYY FineReader | Python offers easier integration with cloud OCR services, while Java has more robust on-premises solutions |
+| **Image Processing** | OpenCV, Pillow, scikit-image | OpenCV, ImageJ, Marvin | Both ecosystems have strong image processing capabilities; Python's libraries are more accessible for rapid development |
+| **NLP Capabilities** | NLTK, spaCy, Transformers (BERT, GPT), Flair | Stanford NLP, OpenNLP, DL4J, CoreNLP | Python has a significant advantage with more modern NLP libraries and pre-trained models |
+| **ML Integration** | scikit-learn, TensorFlow, PyTorch, Keras | Deeplearning4j, Weka, MOA, H2O | Python dominates in ML/DL ecosystem with more libraries, models, and community support |
+| **Cloud Integration** | AWS SDK (boto3), Google Cloud, Azure SDK | AWS SDK, Google Cloud, Azure SDK | Both have good cloud integration, but Python SDKs often have more examples and community support |
+| **Development Speed** | Rapid prototyping, less boilerplate | More verbose, stronger typing | Python enables significantly faster development cycles for OCR solutions |
+| **Performance** | Interpreted, GIL limitations | JVM optimization, multithreading | Java offers better performance for high-throughput, multi-threaded OCR processing |
+| **Scalability** | Good with async frameworks (FastAPI, asyncio) | Excellent with Spring, Quarkus, Micronaut | Java has an edge for enterprise-scale deployments with mature frameworks |
+| **Deployment** | Docker, serverless, lightweight | Docker, enterprise containers, microservices | Python deployments are simpler; Java offers more enterprise deployment options |
+| **Maintenance** | Dynamic typing can lead to runtime errors | Static typing catches errors at compile time | Java's type system provides better long-term maintainability for complex systems |
+
+### 8.2 Python OCR Libraries in Detail
+
+| Library | Strengths | Limitations | Best Use Cases |
+|---------|-----------|-------------|---------------|
+| **AWS Textract** | Excellent accuracy, managed service, document understanding features | AWS-specific, cost based on usage | Production-ready document processing with minimal infrastructure |
+| **pytesseract** | Open-source, free, extensive language support | Lower accuracy than cloud services, requires tuning | Basic OCR needs, offline processing, multilingual documents |
+| **EasyOCR** | 80+ languages, easy to use, good accuracy | Slower than commercial options | Multilingual document processing, simple integration needs |
+| **Google Vision API** | High accuracy, document text detection, language detection | Cost based on usage, requires internet | High-quality OCR with minimal development effort |
+| **Keras-OCR** | End-to-end OCR pipeline, customizable models | Requires ML expertise to optimize | Custom OCR solutions, specialized document types |
+| **PaddleOCR** | High performance, multilingual, open-source | Complex setup, requires GPU for best results | High-volume OCR processing, specialized document layouts |
+
+### 8.3 Java OCR Libraries in Detail
+
+| Library | Strengths | Limitations | Best Use Cases |
+|---------|-----------|-------------|---------------|
+| **Tess4J** | Java wrapper for Tesseract, mature | Same limitations as Tesseract, JNI overhead | Enterprise Java applications requiring basic OCR |
+| **Apache PDFBox** | PDF parsing, text extraction, manipulation | Limited to PDFs, not for general images | PDF-specific document processing workflows |
+| **Aspose.OCR** | High accuracy, extensive format support | Commercial, licensing costs | Enterprise document processing with SLAs |
+| **ABBYY FineReader Engine** | Industry-leading accuracy, document analysis | Expensive, complex integration | High-volume, mission-critical document processing |
+| **Java OCR** | Simple API, lightweight | Limited features, lower accuracy | Basic OCR needs in Java applications |
+| **AsprisePDF** | PDF and image processing, OCR capabilities | Commercial licensing | PDF-centric document workflows |
+
+### 8.4 Recommendation: Python for OCR Extraction
+
+Based on the comprehensive analysis above, **Python is recommended** as the more suitable language for OCR extraction work for the following reasons:
+
+1. **Ecosystem Advantages:**
+   - Richer ecosystem of modern OCR and NLP libraries
+   - Better integration with cloud-based OCR services like AWS Textract
+   - More extensive community support and examples
+   - Faster development cycles for OCR solutions
+
+2. **Technical Considerations:**
+   - Simpler integration with machine learning models for document classification
+   - More accessible image processing capabilities
+   - Better support for modern NLP techniques for context extraction
+   - Easier prototyping and iteration for complex document processing
+
+3. **Implementation Efficiency:**
+   - Less boilerplate code required for OCR pipelines
+   - More straightforward integration with AWS services
+   - Faster time-to-market for document processing solutions
+   - Simplified deployment options for serverless architectures
+
+4. **Specific Advantages for Document Processing:**
+   - Python's AWS Textract client provides more intuitive access to document analysis features
+   - Better support for document understanding through libraries like spaCy and Transformers
+   - More flexible handling of document structure and metadata
+   - Easier implementation of confidence scoring mechanisms
+
+While Java offers advantages in performance, type safety, and enterprise deployment, these benefits are outweighed by Python's significant advantages in development speed, library ecosystem, and integration capabilities for OCR extraction work.
+
+For high-volume production systems where performance is critical, a hybrid approach could be considered: using Python for the OCR extraction and document understanding components, while implementing high-throughput processing pipelines in Java.
+
+### 8.5 Implementation Strategy with Python
+
+The recommended implementation strategy using Python includes:
+
+1. **Core OCR Processing:**
+   - AWS Textract for primary OCR and document analysis
+   - Fallback to pytesseract for offline processing or specific use cases
+
+2. **Image Pre-processing:**
+   - OpenCV for image enhancement and normalization
+   - Pillow for basic image manipulation and format conversion
+
+3. **Document Understanding:**
+   - spaCy for entity recognition and text analysis
+   - Transformers (BERT) for context-aware field extraction
+   - Custom rule-based extractors for structured documents
+
+4. **API and Service Layer:**
+   - FastAPI for high-performance API endpoints
+   - Pydantic for data validation and schema enforcement
+   - asyncio for concurrent processing of multiple documents
+
+5. **Deployment:**
+   - Docker containers for consistent environments
+   - AWS Lambda for serverless processing of individual documents
+   - ECS/EKS for scalable document processing pipelines
